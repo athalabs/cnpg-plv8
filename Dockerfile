@@ -26,14 +26,19 @@ ARG PLV8_REF
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Build deps (build-essential pulls the trixie-default g++/libstdc++-dev,
-# v8-cmake doesn't need depot_tools/gn/ninja so plain cmake is enough)
-# plus PGDG for the PG-18 server-dev headers.
+# Build deps:
+#   - clang/lld: V8 is officially built with clang. gcc-14 (trixie's default)
+#     mis-resolves `std::remove` against C's `<stdio.h>` `remove(const char*)`
+#     in cppgc/stats-collector.h, breaking the build at ~54%. clang-19 is fine.
+#   - build-essential: still needed for libstdc++-dev and the PGXS toolchain
+#     (plv8 itself + final link); we only force clang for the V8 sub-build.
+#   - cmake/git/pkg-config: v8-cmake build, plv8 source fetch.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
         build-essential pkg-config cmake git \
+        clang lld \
     ; \
     install -d /usr/share/postgresql-common/pgdg; \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -60,6 +65,12 @@ RUN set -eux; \
 # under DESTDIR using PGXS conventions:
 #   $DESTDIR$(pg_config --pkglibdir)  -> /install/usr/lib/postgresql/$PG_MAJOR/lib
 #   $DESTDIR$(pg_config --sharedir)   -> /install/usr/share/postgresql/$PG_MAJOR
+#
+# CC/CXX=clang for the V8 sub-build (see comment above). The plv8 .so
+# itself is built via PGXS which uses pg_config's recorded CC; clang on
+# Linux uses libstdc++ by default so ABI matches PG.
+ENV CC=clang
+ENV CXX=clang++
 RUN set -eux; \
     make -j"$(nproc)"; \
     make install DESTDIR=/install
