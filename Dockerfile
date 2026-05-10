@@ -108,8 +108,8 @@ COPY --from=builder /install/usr/share/postgresql/${PG_MAJOR}/extension/ /share/
 # Shared library (V8 statically linked, no runtime libv8 needed in pod)
 COPY --from=builder /install/usr/lib/postgresql/${PG_MAJOR}/lib/ /lib/
 
-# Upstream license
-COPY --from=builder /src/LICENSE /licenses/plv8/LICENSE
+# Upstream license (plv8 ships it as `COPYRIGHT`, not `LICENSE`)
+COPY --from=builder /src/COPYRIGHT /licenses/plv8/COPYRIGHT
 
 # CNPG mounts the volume read-only; the user is informational.
 USER 65532:65532
