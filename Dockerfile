@@ -60,17 +60,30 @@ RUN set -eux; \
     git checkout FETCH_HEAD; \
     git submodule update --init --recursive --depth 1
 
-# `make` runs the default `all` target: builds the v8-cmake submodule
-# (heavy: V8 from source) then plv8.so. `make install` lays files out
+# Pre-build v8-cmake explicitly with clang. plv8's outer Makefile invokes
+# cmake without compiler args, and PGXS (pulled in by plv8) overrides CC/CXX
+# in the make environment with the values recorded in pg_config (which on
+# Debian/PGDG end up pointing at g++, breaking the cmake C-compiler probe).
+# Doing the cmake step ourselves bypasses that orchestration entirely; once
+# libv8_libbase.a exists, plv8's make sees the dependency satisfied and
+# skips its own cmake invocation.
+RUN set -eux; \
+    cd deps/v8-cmake; \
+    mkdir -p build; \
+    cd build; \
+    cmake -DCMAKE_C_COMPILER=/usr/bin/clang \
+          -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -Denable-fPIC=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          ..; \
+    make -j"$(nproc)"
+
+# Now build plv8.so itself (PGXS-driven; uses gcc, which is fine -- ABI
+# matches the rest of the postgres image). `make install` lays files out
 # under DESTDIR using PGXS conventions:
 #   $DESTDIR$(pg_config --pkglibdir)  -> /install/usr/lib/postgresql/$PG_MAJOR/lib
 #   $DESTDIR$(pg_config --sharedir)   -> /install/usr/share/postgresql/$PG_MAJOR
-#
-# CC/CXX=clang for the V8 sub-build (see comment above). The plv8 .so
-# itself is built via PGXS which uses pg_config's recorded CC; clang on
-# Linux uses libstdc++ by default so ABI matches PG.
-ENV CC=clang
-ENV CXX=clang++
 RUN set -eux; \
     make -j"$(nproc)"; \
     make install DESTDIR=/install
