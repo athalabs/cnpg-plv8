@@ -60,6 +60,15 @@ RUN set -eux; \
     git checkout FETCH_HEAD; \
     git submodule update --init --recursive --depth 1
 
+# Patch V8 source: cppgc/stats-collector.h calls `std::remove(it,it,val)`
+# (the <algorithm> overload) without including <algorithm>. It used to
+# compile via transitive includes, but trixie's libstdc++14 dropped that
+# transitive chain, so the only `remove` symbol left at that call site is
+# C's `remove(const char*)` from <stdio.h> -- the 3-arg call then fails.
+# bnoordhuis/v8-cmake's V8 is 11.6 (March 2024) and isn't getting fixes.
+RUN sed -i '1i#include <algorithm>' \
+    deps/v8-cmake/v8/src/heap/cppgc/stats-collector.h
+
 # Pre-build v8-cmake explicitly with clang. plv8's outer Makefile invokes
 # cmake without compiler args, and PGXS (pulled in by plv8) overrides CC/CXX
 # in the make environment with the values recorded in pg_config (which on
